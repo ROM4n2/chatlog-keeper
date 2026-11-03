@@ -83,3 +83,86 @@ def candidate_documents_roots() -> List[Path]:
     _add(home / "OneDrive" / "Documents")
     _add(home / "OneDrive" / "文档")
     return out
+
+
+# Directories a bounded search never descends into: the chat client's user-data
+# folder is never inside these, and walking them wastes the whole time budget.
+_SCAN_SKIP_NAMES = {
+    "windows",
+    "program files",
+    "program files (x86)",
+    "programdata",
+    "$recycle.bin",
+    "system volume information",
+    "recovery",
+    "perflogs",
+    "node_modules",
+    ".git",
+    "__pycache__",
+    "appdata",
+}
+
+# Budget for one drive. The scan only has to find a directory whose name is
+# ``xwechat_files``; it is not a general indexer, so it is capped rather than
+# allowed to run unbounded on a machine with millions of files.
+_SCAN_MAX_DIRS = 20000
+_SCAN_MAX_DEPTH = 4
+_SCAN_BUDGET_SECONDS = 4.0
+
+
+def scan_for_wechat_data_root(name: str = "xwechat_files") -> Optional[Path]:
+    """Find a WeChat user-data folder that lives at a custom path.
+
+    The default locations are tried first by the caller, but a user is free to
+    relocate ``xwechat_files`` anywhere (a second drive, a Chinese-named backup
+    folder). Rather than make that user hand-write a path into an environment
+    variable, this walks each drive root breadth-first to a shallow depth,
+    skipping system and dependency trees, and stops at the first match.
+
+    Returns ``None`` when nothing matches inside the budget. Read-only.
+    """
+    if os.name != "nt":
+        return None
+
+    import time
+    from collections import deque
+
+    target = name.lower()
+    deadline = time.monotonic() + _SCAN_BUDGET_SECONDS
+
+    for drive in all_drive_roots():
+        queue: deque = deque([(drive, 0)])
+        visited = 0
+        while queue:
+            if visited >= _SCAN_MAX_DIRS or time.monotonic() > deadline:
+                break
+            current, depth = queue.popleft()
+            visited += 1
+            try:
+                with os.scandir(current) as entries:
+                    for entry in entries:
+                        try:
+                            if not entry.is_dir(follow_symlinks=False):
+                                continue
+                        except OSError:
+                            continue
+                        lowered = entry.name.lower()
+                        if lowered == target:
+                            found = Path(entry.path)
+                            # The data root holds per-account wxid_* folders;
+                            # an empty match is some other program's folder.
+                            try:
+                                if any(
+                                    child.is_dir()
+                                    for child in found.iterdir()
+                                ):
+                                    return found
+                            except OSError:
+                                continue
+                        if lowered in _SCAN_SKIP_NAMES or lowered.startswith("."):
+                            continue
+                        if depth + 1 <= _SCAN_MAX_DEPTH:
+                            queue.append((Path(entry.path), depth + 1))
+            except OSError:
+                continue
+    return None

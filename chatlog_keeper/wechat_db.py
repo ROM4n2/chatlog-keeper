@@ -318,7 +318,11 @@ def find_weixin_data_root() -> Optional[Path]:
          ``<drive>/xwechat_files`` + ``<drive>/WeChat Files``
       3. real Documents + OneDrive variants
     """
-    from chatlog_keeper.core._paths import all_drive_roots, candidate_documents_roots
+    from chatlog_keeper.core._paths import (
+        all_drive_roots,
+        candidate_documents_roots,
+        scan_for_wechat_data_root,
+    )
 
     candidates: list = []
     env = os.environ.get("CHATLOG_WECHAT_DATA_ROOT", "").strip()
@@ -351,6 +355,16 @@ def find_weixin_data_root() -> Optional[Path]:
                 return c
         except OSError:
             continue
+
+    # Last resort: the user relocated the folder somewhere custom (another
+    # drive, a Chinese-named backup tree). Walk shallowly and find it instead of
+    # failing with an error only an environment variable can fix.
+    if sys.platform == "win32":
+        found = scan_for_wechat_data_root()
+        if found is not None:
+            logger.info(f"Found Weixin data root by scan: {found}")
+            return found
+
     logger.warning("Could not locate Weixin data root; set CHATLOG_WECHAT_DATA_ROOT to override")
     return None
 
