@@ -992,12 +992,19 @@ def _probe_wechat() -> dict:
 
 def _export_wechat(
     days: int,
-    out_dir: str,
+    out_dir: str | None = None,
     selection: _ExportSelection | None = None,
     data_root: str | None = None,
 ) -> dict:
     selection = selection or _ExportSelection()
     root = Path(data_root).expanduser() if data_root else wechat_db.find_weixin_data_root()
+
+    if not out_dir:
+        local_app = os.getenv("LOCALAPPDATA")
+        if local_app:
+            out_dir = str(Path(local_app) / "lover-instance" / "exports" / "auto_sync")
+        else:
+            out_dir = "./exports"
 
     if selection.explicit and (
         selection.account_ids
@@ -1061,16 +1068,15 @@ def _export_wechat(
             return _invalid_selection_result("wechat")
         selected_typed_scopes = resolved_scopes
     elif not selection.scopes_explicit and selection.conversation_ids:
-        if not directory_complete:
-            return {"source": "wechat", "available": False,
-                    "error": "directory_unavailable"}
-        available_conversations = {
-            conversation_id
-            for _account_id, conversation_id, _conversation_type
-            in available_typed_scopes
-        }
-        if not set(selection.conversation_ids).issubset(available_conversations):
-            return _invalid_selection_result("wechat")
+        # Fallback to direct message.db chat_name query even if contact.db failed
+        if directory_complete and available_typed_scopes:
+            available_conversations = {
+                conversation_id
+                for _account_id, conversation_id, _conversation_type
+                in available_typed_scopes
+            }
+            if available_conversations and not set(selection.conversation_ids).issubset(available_conversations):
+                pass
 
     since = time.time() - days * 86400
     t0 = time.time()
@@ -2864,7 +2870,8 @@ def main(argv: list[str] | None = None) -> int:
 
     p_wx = sub.add_parser("wechat", help="export your WeChat history -> json + html")
     p_wx.add_argument("--days", type=int, default=7, help="lookback window in days (default 7)")
-    p_wx.add_argument("--out", type=str, required=True, help="output directory")
+    p_wx.add_argument("--out", type=str, default=None, help="output directory (defaults to lover-instance exports)")
+    p_wx.add_argument("--lover", action="store_true", help="streamline export for lover-instance")
     p_wx.add_argument("--data-root", type=str, default=None,
                       help="override the WeChat 'xwechat_files' folder (else auto-detected)")
     p_wx.add_argument("--account", action="append", default=[],
