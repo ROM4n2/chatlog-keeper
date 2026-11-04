@@ -85,7 +85,7 @@ chatlog-keeper 的不同之处：它是这里唯一能处理 **微信 4.1.10.31+
 ```bash
 git clone https://github.com/labazhou2024/chatlog-keeper.git
 cd chatlog-keeper
-python -m pip install .
+uv tool install .
 ```
 
 正式 tag 还提供 Windows `chatlog-keeper.exe`、Apple Silicon

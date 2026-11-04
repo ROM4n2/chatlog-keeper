@@ -91,7 +91,7 @@ Requires **Python 3.9+**.
 ```bash
 git clone https://github.com/labazhou2024/chatlog-keeper.git
 cd chatlog-keeper
-python -m pip install .
+uv tool install .
 ```
 
 Tagged releases also provide a standalone `chatlog-keeper.exe` for Windows,
